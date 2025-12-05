@@ -76,9 +76,144 @@ class Tool:
 
 
 class Agent:
-    def __init__(self, tools: List[Tool]):
-        # TODO: Implement
-        self.tools = tools
+    def __init__(
+        self,
+        tools: List[Tool] = None,
+        model: Model = Model.GPT_5_MINI,
+        max_iterations: int = 10,
+        max_tokens: int = 4096,
+        temperature: float = 0.4
+    ):
+        self.tools = tools or []
+        self.model = model
+        self.max_iterations = max_iterations
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        
+        # Initialize clients based on provider
+        if model.provider == Provider.OPENAI:
+            self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        elif model.provider == Provider.ANTHROPIC:
+            self.anthropic_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        elif model.provider == Provider.GEMINI:
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            self.gemini_model = genai.GenerativeModel(model.model_name)
+
+    def _call_llm(self, messages: List[Message]) -> str:
+        """Route to appropriate provider based on model."""
+        if self.model.provider == Provider.OPENAI:
+            return self._call_openai(messages)
+        elif self.model.provider == Provider.GEMINI:
+            return self._call_gemini(messages)
+        elif self.model.provider == Provider.ANTHROPIC:
+            return self._call_anthropic(messages)
+        else:
+            raise ValueError(f"Unsupported provider: {self.model.provider}")
+
+    def _call_openai(self, messages: List[Message]) -> str:
+        """Call OpenAI API with message conversion."""
+        # Convert messages to OpenAI format
+        formatted = []
+        for m in messages:
+            if m.role == Role.USER:
+                formatted.append({"role": "user", "content": m.content})
+            elif m.role == Role.ASSISTANT:
+                formatted.append({"role": "assistant", "content": m.content})
+            elif m.role == Role.SYSTEM:
+                formatted.append({"role": "system", "content": m.content})
+            elif m.role == Role.TOOL_CALL:
+                formatted.append({"role": "assistant", "content": m.content})
+            elif m.role == Role.TOOL_RESULT:
+                formatted.append({"role": "user", "content": f"Tool result from {m.tool_name}:\n{m.content}"})
+        
+        response = self.openai_client.chat.completions.create(
+            model=self.model.model_name,
+            messages=formatted,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature
+        )
+        return response.choices[0].message.content
+
+    def _call_anthropic(self, messages: List[Message]) -> str:
+        """Call Anthropic API with message conversion."""
+        # Extract system messages (Anthropic uses separate system param)
+        system_messages = [m.content for m in messages if m.role == Role.SYSTEM]
+        system_prompt = "\n\n".join(system_messages) if system_messages else None
+        
+        # Convert non-system messages
+        formatted = []
+        for m in messages:
+            if m.role == Role.USER:
+                formatted.append({"role": "user", "content": m.content})
+            elif m.role == Role.ASSISTANT:
+                formatted.append({"role": "assistant", "content": m.content})
+            elif m.role == Role.TOOL_CALL:
+                formatted.append({"role": "assistant", "content": m.content})
+            elif m.role == Role.TOOL_RESULT:
+                formatted.append({"role": "user", "content": f"Tool result from {m.tool_name}:\n{m.content}"})
+        
+        response = self.anthropic_client.messages.create(
+            model=self.model.model_name,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+            system=system_prompt,
+            messages=formatted
+        )
+        return response.content[0].text
+
+    def _call_gemini(self, messages: List[Message]) -> str:
+        """Call Gemini API with message conversion."""
+        # Gemini uses chat with history
+        history = []
+        last_message = None
+        
+        # Prepend system messages to first user message
+        system_messages = [m.content for m in messages if m.role == Role.SYSTEM]
+        system_prefix = "\n\n".join(system_messages) + "\n\n" if system_messages else ""
+        system_prepended = False
+        
+        for i, m in enumerate(messages):
+            is_last = (i == len(messages) - 1)
+            
+            if m.role == Role.USER:
+                content = m.content
+                if not system_prepended and system_prefix:
+                    content = system_prefix + content
+                    system_prepended = True
+                
+                if is_last:
+                    last_message = content
+                else:
+                    history.append({"role": "user", "parts": [content]})
+                    
+            elif m.role == Role.ASSISTANT:
+                if is_last:
+                    last_message = m.content
+                else:
+                    history.append({"role": "model", "parts": [m.content]})
+                    
+            elif m.role == Role.TOOL_CALL:
+                if is_last:
+                    last_message = m.content
+                else:
+                    history.append({"role": "model", "parts": [m.content]})
+                    
+            elif m.role == Role.TOOL_RESULT:
+                content = f"Tool result from {m.tool_name}:\n{m.content}"
+                if is_last:
+                    last_message = content
+                else:
+                    history.append({"role": "user", "parts": [content]})
+        
+        chat = self.gemini_model.start_chat(history=history)
+        response = chat.send_message(
+            last_message or "",
+            generation_config=genai.GenerationConfig(
+                max_output_tokens=self.max_tokens,
+                temperature=self.temperature
+            )
+        )
+        return response.text
 
     def run(self, messages: List[Message]) -> Message:
         # TODO: Implement

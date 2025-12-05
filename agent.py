@@ -116,7 +116,7 @@ class Agent:
         for m in messages:
             if m.role in [Role.USER, Role.ASSISTANT, Role.SYSTEM]:
                 formatted.append({"role": m.role.value, "content": m.content})
-            elif m.role == Role.TOOL_CALL or m.role == Role.TOOL_RESULT:
+            elif m.role == Role.TOOL_CALL:
                 formatted.append({"role": "assistant", "content": m.content})
             elif m.role == Role.TOOL_RESULT:
                 formatted.append({"role": "user", "content": f"Tool result from {m.tool_name}:\n{m.content}"})
@@ -201,6 +201,52 @@ class Agent:
         return response.text
 
     def run(self, messages: List[Message]) -> Message:
-        # TODO: Implement
-        pass
+        """Main agent loop: calls LLM, executes tools, returns final response."""
+        # Copy messages to avoid mutating user's list
+        internal_messages = messages.copy()
+        
+        # Add system prompt if tools exist
+        if self.tools:
+            system_msg = Message(Role.SYSTEM, self._build_system_prompt())
+            internal_messages.insert(0, system_msg)
+        
+        # Agent loop
+        response_text = ""
+        for iteration in range(self.max_iterations):
+            # Call LLM
+            response_text = self._call_llm(internal_messages)
+            
+            # Check for tool call
+            tool_call = self._parse_tool_call(response_text)
+            
+            if tool_call:
+                # Add tool call to history
+                internal_messages.append(
+                    Message(Role.TOOL_CALL, response_text, tool_call["name"])
+                )
+                
+                # Execute tool
+                result = self._execute_tool(tool_call)
+                
+                # Add result to history
+                internal_messages.append(
+                    Message(Role.TOOL_RESULT, result, tool_call["name"])
+                )
+                
+                # Continue loop to let LLM process result
+                continue
+            else:
+                # No tool call - this is the final answer
+                return Message(Role.ASSISTANT, response_text)
+        
+        # Max iterations reached - replace system prompt and force final answer
+        final_messages = [m for m in internal_messages if m.role != Role.SYSTEM]
+        final_messages.insert(0, Message(
+            Role.SYSTEM,
+            "You have reached the maximum number of tool calls. The conversation contains all the tool results gathered so far. "
+            "Based on the information available in the conversation history, provide the best final answer you can to the user's question. "
+            "Do NOT attempt to call any more tools. Just synthesize the information you have and respond directly."
+        ))
+        final_response = self._call_llm(final_messages)
+        return Message(Role.ASSISTANT, final_response)
 

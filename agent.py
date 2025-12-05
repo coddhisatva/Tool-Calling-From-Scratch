@@ -6,6 +6,11 @@ import json
 from openai import OpenAI
 from anthropic import Anthropic
 import google.generativeai as genai
+from system_prompts_config import (
+    GENERIC_SYSTEM_PROMPT,
+    TOOL_INSTRUCTIONS,
+    MAX_ITERATIONS_PROMPT
+)
 
 
 # ─── ENUMS ───────────────────────────────────────────────
@@ -82,13 +87,19 @@ class Agent:
         model: Model = Model.GPT_5_MINI,
         max_iterations: int = 10,
         max_tokens: int = 4096,
-        temperature: float = 0.4
+        temperature: float = 0.4,
+        agent_name: str = "AI Assistant",
+        agent_description: str = "A helpful AI assistant.",
+        custom_system_prompt: str = "Your goal is to be as helpful as possible to the user."
     ):
         self.tools = tools or []
         self.model = model
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.agent_name = agent_name
+        self.agent_description = agent_description
+        self.custom_system_prompt = custom_system_prompt
         
         # Initialize clients based on provider
         if model.provider == Provider.OPENAI:
@@ -98,6 +109,71 @@ class Agent:
         elif model.provider == Provider.GEMINI:
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
             self.gemini_model = genai.GenerativeModel(model.model_name)
+
+    def _build_system_prompt(self) -> str:
+        """Build system prompt with agent info and optional tool descriptions."""
+        # Build base prompt
+        base_prompt = GENERIC_SYSTEM_PROMPT.format(
+            agent_name=self.agent_name,
+            agent_description=self.agent_description,
+            custom_prompt=self.custom_system_prompt
+        ).strip()
+        
+        if not self.tools:
+            return base_prompt
+        
+        # Add tool instructions
+        tool_descriptions = "\n\n".join([self._format_tool_description(t) for t in self.tools])
+        tool_section = TOOL_INSTRUCTIONS.format(tool_descriptions=tool_descriptions)
+        
+        return base_prompt + "\n\n" + tool_section
+
+    def _format_tool_description(self, tool: Tool) -> str:
+        """Format a single tool's description for the system prompt."""
+        params_desc = []
+        for param_name, param_info in tool.parameters.items():
+            required = "(required)" if param_info["required"] else "(optional)"
+            param_type = param_info["type"]
+            param_desc = param_info.get("description", "")
+            params_desc.append(f"    - {param_name} ({param_type}, {required}): {param_desc}")
+        
+        params_str = "\n".join(params_desc) if params_desc else "    (no parameters)"
+        
+        return f"""  {tool.name}: {tool.description}
+    Parameters:
+{params_str}"""
+
+    def _parse_tool_call(self, response: str) -> Optional[dict]:
+        """Extract tool call from response text, or None if no tool call."""
+        match = re.search(r'<tool_call>\s*(.*?)\s*</tool_call>', response, re.DOTALL)
+        if not match:
+            return None
+        
+        try:
+            tool_call = json.loads(match.group(1))
+            # Validate structure
+            if "name" not in tool_call:
+                return None
+            return tool_call
+        except json.JSONDecodeError:
+            return None
+
+    def _execute_tool(self, tool_call: dict) -> str:
+        """Execute a tool and return result (or error message)."""
+        tool_name = tool_call.get("name")
+        params = tool_call.get("parameters", {})
+        
+        # Find the tool
+        tool = next((t for t in self.tools if t.name == tool_name), None)
+        if not tool:
+            return f"Error: Tool '{tool_name}' not found"
+        
+        # Execute the tool
+        try:
+            result = tool.function(**params)
+            return str(result)
+        except Exception as e:
+            return f"Error executing tool '{tool_name}': {str(e)}"
 
     def _call_llm(self, messages: List[Message]) -> str:
         """Route to appropriate provider based on model."""
@@ -243,9 +319,7 @@ class Agent:
         final_messages = [m for m in internal_messages if m.role != Role.SYSTEM]
         final_messages.insert(0, Message(
             Role.SYSTEM,
-            "You have reached the maximum number of tool calls. The conversation contains all the tool results gathered so far. "
-            "Based on the information available in the conversation history, provide the best final answer you can to the user's question. "
-            "Do NOT attempt to call any more tools. Just synthesize the information you have and respond directly."
+            GENERIC_SYSTEM_PROMPT + "\n\n" + MAX_ITERATIONS_PROMPT
         ))
         final_response = self._call_llm(final_messages)
         return Message(Role.ASSISTANT, final_response)

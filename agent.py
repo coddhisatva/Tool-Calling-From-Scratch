@@ -112,16 +112,11 @@ class Agent:
 
     def _call_openai(self, messages: List[Message]) -> str:
         """Call OpenAI API with message conversion."""
-        # Convert messages to OpenAI format
         formatted = []
         for m in messages:
-            if m.role == Role.USER:
-                formatted.append({"role": "user", "content": m.content})
-            elif m.role == Role.ASSISTANT:
-                formatted.append({"role": "assistant", "content": m.content})
-            elif m.role == Role.SYSTEM:
-                formatted.append({"role": "system", "content": m.content})
-            elif m.role == Role.TOOL_CALL:
+            if m.role in [Role.USER, Role.ASSISTANT, Role.SYSTEM]:
+                formatted.append({"role": m.role.value, "content": m.content})
+            elif m.role == Role.TOOL_CALL or m.role == Role.TOOL_RESULT:
                 formatted.append({"role": "assistant", "content": m.content})
             elif m.role == Role.TOOL_RESULT:
                 formatted.append({"role": "user", "content": f"Tool result from {m.tool_name}:\n{m.content}"})
@@ -143,10 +138,8 @@ class Agent:
         # Convert non-system messages
         formatted = []
         for m in messages:
-            if m.role == Role.USER:
-                formatted.append({"role": "user", "content": m.content})
-            elif m.role == Role.ASSISTANT:
-                formatted.append({"role": "assistant", "content": m.content})
+            if m.role in [Role.USER, Role.ASSISTANT]:
+                formatted.append({"role": m.role.value, "content": m.content})
             elif m.role == Role.TOOL_CALL:
                 formatted.append({"role": "assistant", "content": m.content})
             elif m.role == Role.TOOL_RESULT:
@@ -163,7 +156,6 @@ class Agent:
 
     def _call_gemini(self, messages: List[Message]) -> str:
         """Call Gemini API with message conversion."""
-        # Gemini uses chat with history
         history = []
         last_message = None
         
@@ -175,35 +167,28 @@ class Agent:
         for i, m in enumerate(messages):
             is_last = (i == len(messages) - 1)
             
+            # Map role to Gemini format
             if m.role == Role.USER:
+                gemini_role = "user"
                 content = m.content
+                # Prepend system to first user message
                 if not system_prepended and system_prefix:
                     content = system_prefix + content
                     system_prepended = True
-                
-                if is_last:
-                    last_message = content
-                else:
-                    history.append({"role": "user", "parts": [content]})
-                    
-            elif m.role == Role.ASSISTANT:
-                if is_last:
-                    last_message = m.content
-                else:
-                    history.append({"role": "model", "parts": [m.content]})
-                    
-            elif m.role == Role.TOOL_CALL:
-                if is_last:
-                    last_message = m.content
-                else:
-                    history.append({"role": "model", "parts": [m.content]})
-                    
+            elif m.role in [Role.ASSISTANT, Role.TOOL_CALL]:
+                gemini_role = "model"
+                content = m.content
             elif m.role == Role.TOOL_RESULT:
+                gemini_role = "user"
                 content = f"Tool result from {m.tool_name}:\n{m.content}"
-                if is_last:
-                    last_message = content
-                else:
-                    history.append({"role": "user", "parts": [content]})
+            else:
+                continue  # Skip SYSTEM (already handled)
+            
+            # Add to history or set as last message
+            if is_last:
+                last_message = content
+            else:
+                history.append({"role": gemini_role, "parts": [content]})
         
         chat = self.gemini_model.start_chat(history=history)
         response = chat.send_message(

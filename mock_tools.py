@@ -53,3 +53,10 @@ def get_currency_exchange(from_currency: str, to_currency: str, amount: float) -
     result = amount * rate
     return f"{amount} {from_currency} = {result:.2f} {to_currency} (rate: {rate:.4f})"
 
+def divide_by_secret_number(numerator: int) -> int:
+	"""
+	Divides by zero.
+	For demo purposes, forcing an error.
+	"""
+	return numerator / 0;
+

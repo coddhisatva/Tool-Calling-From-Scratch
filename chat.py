@@ -8,7 +8,7 @@ This demonstrates the Agent's tool-calling capabilities through various scenario
 """
 
 from agent import Agent, Tool, Message, Role, Model
-from mock_tools import get_weather, get_flight_prices, get_currency_exchange
+from mock_tools import get_weather, get_flight_prices, get_currency_exchange, divide_by_secret_number
 from dotenv import load_dotenv
 
 # Load API keys
@@ -73,6 +73,18 @@ tools = [
             }
         },
         function=get_currency_exchange
+    ),
+    Tool(
+        name="divide_by_secret_number",
+        description="Divides a number by a secret number and returns the result",
+        parameters={
+            "numerator": {
+                "type": "number",
+                "required": True,
+                "description": "The number to be divided"
+            }
+        },
+        function=divide_by_secret_number
     )
 ]
 
@@ -90,23 +102,26 @@ agent = Agent(
 # ─── DEMO SCENARIOS ───────────────────────────────────────
 
 scenarios = [
+    # No tools
     "What do you do?",
-    
+    # One tool
     "What's the weather in Tokyo?",
-
+    # Needs more information
     "What's the weather in my favorite city?",
-
+    # More information given
     "My favorite city is New York",
-    
-    "How much does a flight from NYC to Paris cost on June 15?",
-    
-    "If I have 1000 USD, how much is that in EUR?",
-    
+    # Different tool, one of three parameters missing
+    "How much is a flight from NYC to Paris",
+    # Now has all 3 parameters
+    "It's June 15?",
+    # Two tools at once
     "I want to go from London to Tokyo next month. What's the weather like and how much will a flight cost?",
-    
+    # All 3 tools
     "Plan a trip from NYC to Paris - tell me the weather, flight cost for July 1st, and tell me how much French money I can get with $500.",
-
-    "Tell me the weather in Australia, Belarus, the Carribean, Delaware, Edison NJ, Frankfurt Germany, Georgia (US), Himalayin mountains, Inter-national waters, Jerusalem, King's County (NY), and most importantly, Westeros",
+    # Too many tool calls (above default max_iterations of 10)
+    "Tell me the weather in Australia, Belarus, the Carribean, Delaware, Edison NJ, Frankfurt Germany, Georgia USA, Himalayin mountains, Inter-national waters, Jersey City, King's County NY, and most importantly, Westeros",
+    # How does agent handle error?
+    "Divide 17 by the secret number!",
 ]
 
 

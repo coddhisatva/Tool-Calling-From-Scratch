@@ -51,7 +51,7 @@ GENERIC_SYSTEM_PROMPT = """You are {agent_name}. {agent_description}
 {custom_prompt}"""
 
 TOOL_INSTRUCTIONS = """
-You have access to the following tools that you MAY use when particularly relevant:
+You have access to the following tools:
 
 {tool_descriptions}
 
@@ -61,10 +61,11 @@ To call a tool, respond with EXACTLY this format:
 </tool_call>
 
 Important guidelines:
-- Only use tools when they are specifically relevant and necessary to answer the user's question
-- You can respond directly without using any tools if you already have sufficient information
-- Only call ONE tool at a time and wait for its result before deciding the next step
-- If you need more information from the user to use a tool effectively, ask them first
+- When the user's question can be answered by using a tool, USE IT immediately with the information provided
+- Don't ask for clarification unless a REQUIRED parameter is completely missing
+- Use tools when they help answer the question, even if some details are ambiguous
+- After receiving a tool result, use it to answer the user's question
+- You can respond directly without tools if the question doesn't need external data
 """
 
 MAX_ITERATIONS_PROMPT = """

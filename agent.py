@@ -55,14 +55,12 @@ class Agent:
         tools: List[Tool] = None,
         model: Model = Model.GPT_5_MINI,
         max_iterations: int = 10,
-        max_tokens: int = 4096,
-        temperature: float = 0.4
+        max_tokens: int = 4096
     ):
         self.tools = tools or []
         self.model = model
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
-        self.temperature = temperature
         self.agent_name = name
         self.agent_description = description
         self.custom_system_prompt = custom_system_prompt
@@ -184,7 +182,6 @@ class Agent:
         response = self.openai_client.chat.completions.create(
             model=self.model.model_name,
             max_completion_tokens=self.max_tokens,
-            temperature=self.temperature,
             messages=formatted
         )
         return response.choices[0].message.content
@@ -208,7 +205,6 @@ class Agent:
         response = self.anthropic_client.messages.create(
             model=self.model.model_name,
             max_tokens=self.max_tokens,
-            temperature=self.temperature,
             system=system_prompt,
             messages=formatted
         )
@@ -254,8 +250,7 @@ class Agent:
         response = chat.send_message(
             last_message or "",
             generation_config=genai.GenerationConfig(
-                max_output_tokens=self.max_tokens,
-                temperature=self.temperature
+                max_output_tokens=self.max_tokens
             )
         )
         return response.text

@@ -1,12 +1,14 @@
 from typing import List, Callable, Optional
-from enum import Enum
 import os
 import re
 import json
 from openai import OpenAI
 from anthropic import Anthropic
 import google.generativeai as genai
-from system_prompts_config import (
+from config import (
+    Provider,
+    Model,
+    DEFAULT_CUSTOM_SYSTEM_PROMPT,
     GENERIC_SYSTEM_PROMPT,
     TOOL_INSTRUCTIONS,
     MAX_ITERATIONS_PROMPT
@@ -15,50 +17,14 @@ from system_prompts_config import (
 
 # ─── ENUMS ───────────────────────────────────────────────
 
+from enum import Enum
+
 class Role(Enum):
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
-
-
-class Provider(Enum):
-    OPENAI = "openai"
-    GEMINI = "gemini"
-    ANTHROPIC = "anthropic"
-
-
-class Model(Enum):
-    # OpenAI - GPT
-    GPT_5_1 = ("gpt-5.1", Provider.OPENAI)
-    GPT_5 = ("gpt-5", Provider.OPENAI)
-    GPT_5_MINI = ("gpt-5-mini", Provider.OPENAI)
-    GPT_5_NANO = ("gpt-5-nano", Provider.OPENAI)
-    
-    # OpenAI - Reasoning
-    O4_MINI = ("o4-mini", Provider.OPENAI)
-    O3 = ("o3", Provider.OPENAI)
-    O3_MINI = ("o3-mini", Provider.OPENAI)
-    O1 = ("o1", Provider.OPENAI)
-    
-    # Gemini
-    GEMINI_3_PRO = ("gemini-3-pro-preview", Provider.GEMINI)
-    GEMINI_2_5_PRO = ("gemini-2.5-pro", Provider.GEMINI)
-    GEMINI_2_5_FLASH = ("gemini-2.5-flash", Provider.GEMINI)
-    GEMINI_2_FLASH = ("gemini-2.0-flash", Provider.GEMINI)
-    
-    # Anthropic
-    CLAUDE_SONNET = ("claude-sonnet-4-20250514", Provider.ANTHROPIC)
-    CLAUDE_HAIKU = ("claude-haiku-4-20250514", Provider.ANTHROPIC)
-
-    @property
-    def model_name(self):
-        return self.value[0]
-    
-    @property
-    def provider(self):
-        return self.value[1]
 
 
 # ─── MESSAGE ─────────────────────────────────────────────
@@ -90,7 +56,7 @@ class Agent:
         temperature: float = 0.4,
         agent_name: str = "AI Assistant",
         agent_description: str = "A helpful AI assistant.",
-        custom_system_prompt: str = "Your goal is to be as helpful as possible to the user."
+        custom_system_prompt: str = DEFAULT_CUSTOM_SYSTEM_PROMPT
     ):
         self.tools = tools or []
         self.model = model

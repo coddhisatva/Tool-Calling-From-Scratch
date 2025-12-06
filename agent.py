@@ -192,7 +192,6 @@ class Agent:
         """Call Anthropic API with message conversion."""
         # Extract system messages (Anthropic uses separate system param)
         system_messages = [m.content for m in messages if m.role == Role.SYSTEM]
-        system_prompt = "\n\n".join(system_messages) if system_messages else None
         
         # Convert non-system messages
         formatted = []
@@ -204,12 +203,17 @@ class Agent:
             elif m.role == Role.TOOL_RESULT:
                 formatted.append({"role": "user", "content": f"Tool result from {m.tool_name}:\n{m.content}"})
         
-        response = self.anthropic_client.messages.create(
-            model=self.model.model_name,
-            max_tokens=self.max_tokens,
-            system=system_prompt,
-            messages=formatted
-        )
+        # Build kwargs - only include system if we have system messages
+        kwargs = {
+            "model": self.model.model_name,
+            "max_tokens": self.max_tokens,
+            "messages": formatted
+        }
+        if system_messages:
+            # Anthropic wants system as a list
+            kwargs["system"] = [{"type": "text", "text": "\n\n".join(system_messages)}]
+        
+        response = self.anthropic_client.messages.create(**kwargs)
         return response.content[0].text
 
     def _call_gemini(self, messages: List[Message]) -> str:

@@ -69,9 +69,10 @@ Important guidelines:
 """
 
 MAX_ITERATIONS_PROMPT = """
-You have reached the maximum number of tool calls for this conversation.
-The conversation history contains all the tool results gathered so far.
-Based on the information available, provide the best final answer you can to the user's question.
-Do NOT attempt to call any more tools. Just synthesize the information you have and respond directly.
+IMPORTANT: You have reached the maximum number of tool calls allowed for this conversation.
+Due to this limit, you were unable to complete all requested tool calls.
+Please clearly state that you ran out of tool calls and explain which information you were unable to retrieve.
+Then provide the best answer you can based on the tool results you did receive.
+Do NOT attempt to call any more tools.
 """
 

@@ -57,4 +57,4 @@ requirements.txt   - Dependencies (openai, anthropic, google-generativeai, pytho
 .env.example       - API key template
 ```
 
-**Usage**: Create an `.env` file with API keys, install dependencies with `pip install -r requirements.txt`, then run `python chat.py` to see the demo. Users can create their own agents by defining tool functions, wrapping them in `Tool` objects with metadata, and passing them to `Agent(name, description, tools=tools)`.
+**Usage**: Create an `.env` file with API keys based on .env.example, install dependencies with `pip install -r requirements.txt`, then run `python chat.py` to see the demo. Users can create their own agents by defining tool functions, wrapping them in `Tool` objects with metadata, and passing them to `Agent(name, description, tools=tools)`.

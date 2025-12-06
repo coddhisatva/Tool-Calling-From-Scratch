@@ -42,8 +42,20 @@ class Tool:
     def __init__(self, name: str, description: str, parameters: dict, function: Callable):
         self.name = name
         self.description = description
-        self.parameters = parameters
         self.function = function
+        
+        # Validate parameters
+        for param_name, param_info in parameters.items():
+            if "type" not in param_info:
+                raise ValueError(
+                    f"Tool '{name}': Parameter '{param_name}' must have 'type' field"
+                )
+            if "required" not in param_info:
+                raise ValueError(
+                    f"Tool '{name}': Parameter '{param_name}' must have 'required' field"
+                )
+        
+        self.parameters = parameters
 
 
 class Agent:
@@ -310,9 +322,17 @@ class Agent:
         
         # Max iterations reached - replace system prompt and force final answer
         final_messages = [m for m in internal_messages if m.role != Role.SYSTEM]
+        
+        # Build formatted system prompt for max iterations
+        formatted_system = GENERIC_SYSTEM_PROMPT.format(
+            agent_name=self.agent_name,
+            agent_description=self.agent_description,
+            custom_prompt=self.custom_system_prompt
+        )
+        
         final_messages.insert(0, Message(
             Role.SYSTEM,
-            GENERIC_SYSTEM_PROMPT + "\n\n" + MAX_ITERATIONS_PROMPT
+            formatted_system + "\n\n" + MAX_ITERATIONS_PROMPT
         ))
         final_response = self._call_llm(final_messages)
         return Message(Role.ASSISTANT, final_response)

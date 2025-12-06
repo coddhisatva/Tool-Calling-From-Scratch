@@ -42,14 +42,7 @@ class Model(Enum):
 
 # ─── DEFAULT VALUES ───────────────────────────────────────
 
-DEFAULT_MODEL = Model.GPT_5_MINI
-DEFAULT_TEMPERATURE = 0.4
-DEFAULT_MAX_TOKENS = 4096
-DEFAULT_MAX_ITERATIONS = 10
-DEFAULT_AGENT_NAME = "AI Assistant"
-DEFAULT_AGENT_DESCRIPTION = "A helpful AI assistant."
 DEFAULT_CUSTOM_SYSTEM_PROMPT = "Your goal is to be as helpful as possible to the user."
-
 
 # ─── SYSTEM PROMPTS ───────────────────────────────────────
 

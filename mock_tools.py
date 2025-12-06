@@ -55,8 +55,8 @@ def get_currency_exchange(from_currency: str, to_currency: str, amount: float) -
 
 def divide_by_secret_number(numerator: int) -> int:
 	"""
-	Divides by zero.
+	Divides by secret number.
 	For demo purposes, forcing an error.
 	"""
-	return numerator / 0;
+	return numerator / 0
 

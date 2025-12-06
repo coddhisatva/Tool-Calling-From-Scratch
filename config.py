@@ -63,15 +63,18 @@ To call a tool, respond with EXACTLY this format:
 Important guidelines:
 - When the user's question can be answered by using a tool, USE IT immediately with the information provided
 - Don't ask for clarification unless a REQUIRED parameter is completely missing
+- Even if a tool result seems urgent, continue gathering all requested information before responding
+- Gather all necessary information to fully answer the user's question before providing your final response
 - Use tools when they help answer the question, even if some details are ambiguous
 - After receiving a tool result, use it to answer the user's question
 - You can respond directly without tools if the question doesn't need external data
 """
 
 MAX_ITERATIONS_PROMPT = """
-You have reached the maximum number of tool calls for this conversation.
-The conversation history contains all the tool results gathered so far.
-Based on the information available, provide the best final answer you can to the user's question.
-Do NOT attempt to call any more tools. Just synthesize the information you have and respond directly.
+IMPORTANT: You have reached the maximum number of tool calls allowed for this conversation.
+Due to this limit, you were unable to complete all requested tool calls.
+Please clearly state that you ran out of tool calls and explain which information you were unable to retrieve.
+Then provide the best answer you can based on the tool results you did receive.
+Do NOT attempt to call any more tools.
 """
 

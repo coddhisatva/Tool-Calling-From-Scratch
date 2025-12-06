@@ -67,13 +67,31 @@ class Agent:
         self.agent_description = agent_description
         self.custom_system_prompt = custom_system_prompt
         
-        # Initialize clients based on provider
+        # Validate API key exists for chosen provider
         if model.provider == Provider.OPENAI:
-            self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "OPENAI_API_KEY not found in environment. "
+                    "Please add it to your .env file or set it as an environment variable."
+                )
+            self.openai_client = OpenAI(api_key=api_key)
         elif model.provider == Provider.ANTHROPIC:
-            self.anthropic_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "ANTHROPIC_API_KEY not found in environment. "
+                    "Please add it to your .env file or set it as an environment variable."
+                )
+            self.anthropic_client = Anthropic(api_key=api_key)
         elif model.provider == Provider.GEMINI:
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "GEMINI_API_KEY not found in environment. "
+                    "Please add it to your .env file or set it as an environment variable."
+                )
+            genai.configure(api_key=api_key)
             self.gemini_model = genai.GenerativeModel(model.model_name)
 
     def _build_system_prompt(self) -> str:

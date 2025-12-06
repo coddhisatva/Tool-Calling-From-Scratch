@@ -183,9 +183,9 @@ class Agent:
         
         response = self.openai_client.chat.completions.create(
             model=self.model.model_name,
-            messages=formatted,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature
+            max_completion_tokens=self.max_tokens,
+            temperature=self.temperature,
+            messages=formatted
         )
         return response.choices[0].message.content
 

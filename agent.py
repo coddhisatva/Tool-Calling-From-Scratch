@@ -55,7 +55,8 @@ class Agent:
         tools: List[Tool] = None,
         model: Model = Model.GPT_5_MINI,
         max_iterations: int = 10,
-        max_tokens: int = 4096
+        max_tokens: int = 4096,
+        demo: bool = False
     ):
         self.tools = tools or []
         self.model = model
@@ -64,6 +65,7 @@ class Agent:
         self.agent_name = name
         self.agent_description = description
         self.custom_system_prompt = custom_system_prompt
+        self.demo = demo
         
         # Validate API key exists for chosen provider
         if model.provider == Provider.OPENAI:
@@ -275,6 +277,10 @@ class Agent:
             tool_call = self._parse_tool_call(response_text)
             
             if tool_call:
+                # Print tool call in demo mode
+                if self.demo:
+                    print(f"[TOOL CALL] {tool_call['name']}({', '.join(f'{k}={v}' for k, v in tool_call.get('parameters', {}).items())})")
+                
                 # Add tool call to history
                 internal_messages.append(
                     Message(Role.TOOL_CALL, response_text, tool_call["name"])
@@ -282,6 +288,10 @@ class Agent:
                 
                 # Execute tool
                 result = self._execute_tool(tool_call)
+                
+                # Print tool result in demo mode
+                if self.demo:
+                    print(f"[TOOL RESULT] {result}\n")
                 
                 # Add result to history
                 internal_messages.append(

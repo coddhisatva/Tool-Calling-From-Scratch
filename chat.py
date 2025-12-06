@@ -82,7 +82,8 @@ tools = [
 agent = Agent(
     name="Travel Assistant",
     description="A helpful travel planning assistant that can check weather, find flight prices, and convert currencies.",
-    tools=tools
+    tools=tools,
+    demo=True
 )
 
 

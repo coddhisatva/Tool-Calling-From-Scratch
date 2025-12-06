@@ -92,9 +92,11 @@ agent = Agent(
 scenarios = [
     "What do you do?",
     
-    "Where should I travel this summer?",
-    
     "What's the weather in Tokyo?",
+
+    "What's the weather in my favorite city?",
+
+    "My favorite city is New York",
     
     "How much does a flight from NYC to Paris cost on June 15?",
     
@@ -102,7 +104,9 @@ scenarios = [
     
     "I want to go from London to Tokyo next month. What's the weather like and how much will a flight cost?",
     
-    "Plan a trip from NYC to Paris - tell me the weather, flight cost for July 1st, and convert $500 to EUR.",
+    "Plan a trip from NYC to Paris - tell me the weather, flight cost for July 1st, and tell me how much French money I can get with $500.",
+
+    "Tell me the weather in Australia, Belarus, the Carribean, Delaware, Edison NJ, Frankfurt Germany, Georgia (US), Himalayin mountains, Inter-national waters, Jerusalem, King's County (NY), and most importantly, Westeros",
 ]
 
 
@@ -115,6 +119,9 @@ def chat():
     print("agent can use tools to fetch weather, flight prices, and currency")
     print("exchange rates, or respond directly when tools aren't needed.\n")
     
+    # Maintain conversation history across all scenarios
+    messages = []
+    
     for i, question in enumerate(scenarios, 1):
         print("\n" + "─"*70)
         print(f"SCENARIO {i}")
@@ -122,11 +129,15 @@ def chat():
         print(f"User: {question}")
         print()
         
-        # Create fresh message list for each scenario
-        messages = [Message(Role.USER, question)]
+        # Add user message to ongoing conversation
+        messages.append(Message(Role.USER, question))
         
         try:
             response = agent.run(messages)
+            
+            # Add response to ongoing conversation
+            messages.append(response)
+            
             print(f"Agent: {response.content}")
         except Exception as e:
             print(f"Error: {str(e)}")

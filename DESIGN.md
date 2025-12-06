@@ -1,269 +1,60 @@
 # Design Document: Tool-Calling Agent Library
 
-## Overview
+## Agent Flow
 
-This library implements an AI agent system with tool-calling capabilities from scratch, without using pre-built tool-calling features from LLM SDKs. The agent can intelligently decide when to use external tools to answer user queries, execute those tools, and synthesize responses based on the results.
+The agent operates through an agentic loop in the `run()` method. When a user calls `run()` after creating their agent, we inject a system prompt containing the agent's name, description, custom prompt (if provided), and detailed descriptions of all available tools. This system prompt instructs the LLM on how to request tool calls using a specific XML-like format. We then enter a loop that runs for up to `max_iterations` times. In each iteration, we pass all message history to the LLM provider, which analyzes the context and decides whether to call a tool or return a final response. If the LLM outputs a tool call, we parse it, execute the corresponding function, append the result to the message history, and loop again. If the LLM outputs normal text (no tool call detected), we return that as the final response. This continues until either the agent decides it has enough information to answer, or we hit the iteration limit, at which point we force a final answer by replacing the system prompt with instructions to synthesize a response from available information without calling more tools.
 
-## Architecture
+## Classes
 
-### High-Level Flow
-
-```
-User Query
-    ↓
-Agent.run()
-    ↓
-Add system prompt with tool descriptions
-    ↓
-┌─── Agentic Loop (max_iterations) ───┐
-│                                      │
-│  Call LLM with message history       │
-│           ↓                          │
-│  Parse response for tool calls       │
-│           ↓                          │
-│  Tool call found?                    │
-│    YES → Execute tool                │
-│         → Add result to history      │
-│         → Loop back                  │
-│    NO  → Return final response       │
-│                                      │
-└──────────────────────────────────────┘
-```
-
-### Core Components
-
-**1. Agent**
-- Manages the agentic loop
-- Routes to appropriate LLM provider
-- Handles tool execution
-- Maintains conversation state
-
-**2. Tool**
-- Encapsulates a callable function
-- Includes metadata (name, description, parameters)
-- Provides self-documentation for the LLM
-
-**3. Message**
-- Represents conversation turns
-- Supports multiple roles (USER, ASSISTANT, SYSTEM, TOOL_CALL, TOOL_RESULT)
-
-**4. Provider/Model System**
-- Supports OpenAI, Anthropic, and Google Gemini
-- Provider-specific message formatting
-- Unified interface across providers
-
-## Implementation Details
-
-### Tool Calling Mechanism
-
-Since we cannot use built-in tool calling, we implement it through prompt engineering:
-
-1. **System Prompt Generation**: Tools are formatted into natural language descriptions and injected into the system prompt, along with instructions for a specific XML-like format to request tool calls.
-
-2. **Tool Call Format**: The LLM is instructed to output:
-   ```
-   <tool_call>
-   {"name": "tool_name", "parameters": {"param": "value"}}
-   </tool_call>
-   ```
-
-3. **Parsing**: Regular expressions extract the JSON from tool call tags.
-
-4. **Execution**: The tool function is called with extracted parameters, and results are fed back as conversation context.
-
-### Multi-Provider Support
-
-Each provider has different API requirements:
-
-**OpenAI**:
-- System messages included in messages array
-- Uses `max_completion_tokens` parameter
-- Simple role/content format
-
-**Anthropic**:
-- System prompt is separate parameter (list of objects)
-- Uses `max_tokens` parameter
-- Standard role/content format
-
-**Gemini**:
-- No native system role (prepended to first user message)
-- Uses chat history + current message pattern
-- Uses `max_output_tokens` in GenerationConfig
-
-The `_call_llm()` method routes to provider-specific implementations that handle these differences.
-
-### Message Flow
-
-Messages accumulate through the conversation:
-
-1. User message added
-2. System prompt injected (if tools exist)
-3. LLM generates response
-4. If tool call detected:
-   - TOOL_CALL message added (contains request)
-   - TOOL_RESULT message added (contains output)
-   - Loop continues
-5. If no tool call: return as final response
+The library is built around three core classes. 
+- `Agent` is the orchestrator that manages the agentic loop, routes to the appropriate LLM provider (OpenAI, Anthropic, or Gemini), and executes tools. It requires `name` and `description` parameters that define the agent's identity and purpose in its system prompt, while `tools`, `model`, `max_iterations`, `max_tokens`, and `demo` are optional with sensible defaults. The `model` parameter accepts a `Model` enum value that encapsulates both the model name and its provider through tuple values, with properties to access each. 
+- `Tool` encapsulates a callable function along with metadata: a name, description, and parameters dictionary that specifies each parameter's type, whether it's required, and a description. This metadata is formatted into natural language for the system prompt so the LLM understands when and how to use each tool. 
+- `Message` represents individual conversation turns, with a `Role` enum distinguishing between USER, ASSISTANT, SYSTEM, TOOL_CALL, and TOOL_RESULT messages. This role system allows us to track the full conversation flow including tool interactions, and each provider's `_call_*` method handles formatting these roles appropriately for that provider's API (e.g., Anthropic separates system prompts while OpenAI includes them in the messages array).
 
 ## Design Considerations
 
-### 1. Missing Information to Answer Query
+- **Missing information to answer the query**: The system prompt instructs the LLM to respond conversationally when it lacks information. The LLM will naturally ask clarifying questions (like "Which city?" if asked about weather without specifying a location) rather than attempting to call tools with incomplete context.
 
-**Approach**: The system prompt instructs the LLM to respond naturally when it lacks information.
+- **Missing necessary parameters for a tool**: The system prompt emphasizes using tools immediately when information is available, but asking users when required parameters are completely missing. In practice, the LLM typically asks for clarification before calling. If it does attempt a call with missing parameters, Python raises a TypeError, which our try/except block catches and feeds back to the LLM as an error message, allowing it to recover by requesting the missing information.
 
-**Outcome**: The LLM will ask clarifying questions without calling tools, maintaining a conversational flow. For example, if asked "What's the weather?" it will ask "Which city?"
+- **Deciding which tool to call**: Each tool's description and parameter specifications are included in the system prompt. The LLM uses semantic understanding to match user intent with tool capabilities, selecting the most appropriate tool based on these descriptions. Our prompt engineering emphasizes immediate tool use when queries clearly benefit from external data. The user's custom prompt can add additional instructions here as well.
 
-### 2. Missing Tool Parameters
+- **Deciding when to stop calling tools**: The LLM naturally terminates the loop by outputting plain text instead of a tool call when it has sufficient information to answer. Our parser only detects tool calls in the specific `<tool_call>` format, so any other response is treated as final. The `max_iterations` parameter prevents infinite loops if the agent gets stuck; when reached, we modify the system prompt to force a conclusive answer based on information gathered so far. The user can set `max_iterations` at the `Agent` level; otherwise, it's set to 10 by default.
 
-**Approach**: System prompt tells LLM to use tools immediately when information is available, and to ask users only when required parameters are completely missing.
+- **Handling errors from tool calls**: All tool execution is wrapped in try/except blocks. Any exception is caught, converted to a descriptive string (e.g., "Error executing tool 'divide': division by zero"), and fed back to the LLM as a TOOL_RESULT message. The LLM sees this error as conversational context and can retry with corrected parameters, ask the user for help, explain limitations, or suggest alternatives.
 
-**Outcome**: The LLM typically asks for clarification before attempting a tool call. If it does call with missing parameters, Python raises TypeError, which is caught and fed back to the LLM for recovery.
+- **Handling tool responses**: Tool outputs are converted to strings and added as TOOL_RESULT messages in the conversation history. When formatting messages for provider APIs, these are treated as user-role messages since they represent input to the LLM. The LLM receives tool results as context and synthesizes them into natural language responses for the user.
 
-### 3. Deciding Which Tool to Call
+## Demo
 
-**Approach**: Each tool includes a detailed description and parameter specifications in the system prompt. The LLM uses semantic understanding to match user intent with tool capabilities.
+The `chat.py` file demonstrates a Travel Assistant agent with four tools: `get_weather`, `get_flight_prices`, `get_currency_exchange`, and `divide_by_secret_number` (which intentionally causes errors). The demo runs ten scenarios with maintained conversation history:
 
-**Outcome**: The LLM analyzes the query and selects the most appropriate tool based on descriptions. Our prompt engineering emphasizes immediate tool use when relevant.
+- **"What do you do?"** - Agent describes its capabilities without needing tools
+- **"What's the weather in Tokyo?"** - Single tool call to get_weather
+- **"What's the weather in my favorite city?"** - Agent asks for clarification (missing information)
+- **"My favorite city is New York"** - Continues conversation with context from previous turn
+- **"How much is a flight from NYC to Paris"** - Missing 1/3 paramaters (date), agent asks for it
+- **"It's June 15?"** - Agent uses context to complete the flight price query
+- **"I want to go from London to Tokyo next month..."** - Two tool calls at once (weather and flights)
+- **"Plan a trip from NYC to Paris..."** - Uses all three main tools (weather, flights, currency)
+- **"Tell me the weather in Australia, Belarus, Caribbean..."** - Queries many locations to demonstrate hitting max_iterations limit
+- **"Divide 17 by the secret number!"** - Triggers division by zero to demonstrate error handling
 
-### 4. Deciding When to Stop
+All tools use mock data (deterministic weather based on first letter, random prices/rates) so reviewers don't need additional API keys.
 
-**Approach**: The LLM outputs either:
-- A tool call (loop continues)
-- Normal text (loop terminates)
+(*Note: Demo mode, enabled in chat.py, outputs tool usage for demonstration purposes)
 
-A `max_iterations` safeguard prevents infinite loops. If reached, a modified system prompt forces a final answer.
-
-**Outcome**: The agent naturally terminates when the LLM has sufficient information to answer without more tools.
-
-### 5. Handling Tool Errors
-
-**Approach**: All tool execution is wrapped in try/except. Errors are caught and converted to descriptive strings, then fed back to the LLM as tool results.
-
-**Outcome**: The LLM sees error messages and can:
-- Retry with corrected parameters
-- Ask the user for clarification
-- Apologize and explain limitations
-- Suggest alternatives
-
-### 6. Handling Tool Responses
-
-**Approach**: Tool outputs are converted to strings and added as TOOL_RESULT messages. These are formatted as user messages in provider APIs, since they represent input to the LLM.
-
-**Outcome**: The LLM receives tool results as conversational context and synthesizes them into natural language responses.
-
-## Configuration System
-
-The library separates configuration into `config.py`:
-
-**Model Configuration**:
-- Provider enum (OPENAI, GEMINI, ANTHROPIC)
-- Model enum with tuples of (model_name, provider)
-- Properties for accessing name and provider
-
-**System Prompts**:
-- Generic system prompt template
-- Tool instructions template
-- Max iterations prompt
-
-**Design Rationale**: This separation allows users to see all available models in one place and modify prompt templates without touching core agent logic.
-
-## Agent Parameters
-
-The Agent class is instantiated with:
-
-**Required**:
-- `name`: Agent's identity
-- `description`: Agent's purpose
-
-**Optional**:
-- `custom_system_prompt`: Override default behavioral instructions
-- `tools`: List of Tool objects
-- `model`: Which LLM to use (default: GPT-5-mini)
-- `max_iterations`: Loop limit (default: 10)
-- `max_tokens`: Response length limit (default: 4096)
-- `demo`: Enable tool call logging (default: False)
-
-**Design Rationale**: Name and description are required because they define the agent's identity and purpose, which are fundamental to its system prompt. Everything else has sensible defaults.
-
-## Demo: chat.py
-
-The demo showcases a Travel Assistant agent with three tools:
-
-**Tools**:
-1. `get_weather(location)` - Returns mock weather data
-2. `get_flight_prices(origin, destination, date)` - Returns mock flight prices
-3. `get_currency_exchange(from_currency, to_currency, amount)` - Returns mock exchange rates
-4. `divide_by_secret_number(numerator)` - Intentionally errors to demonstrate error handling
-
-**Scenarios**:
-
-1. **"What do you do?"** - No tools needed, agent describes capabilities
-2. **"Where should I travel this summer?"** - General advice, no external data needed
-3. **"What's the weather in Tokyo?"** - Single tool call (get_weather)
-4. **"How much does a flight from NYC to Paris cost on June 15?"** - Single tool call (get_flight_prices)
-5. **"If I have 1000 USD, how much is that in EUR?"** - Single tool call (get_currency_exchange)
-6. **"I want to go from London to Tokyo next month..."** - Multiple tool calls (get_weather, get_flight_prices)
-7. **"Plan a trip from NYC to Paris..."** - Multiple tool calls (all three tools)
-8. **"Tell me the weather in Australia, Belarus..."** - Exceeds max_iterations, demonstrates loop limit
-9. **"Divide 17 by the secret number!"** - Tool error (division by zero), demonstrates error handling
-
-The demo maintains conversation history across scenarios, showing how context builds through multiple interactions.
-
-## Error Handling Strategy
-
-**API Key Validation**: On Agent initialization, we verify the required API key exists for the selected provider. This fails fast with a clear error message.
-
-**Tool Execution Errors**: Caught and returned as descriptive strings. The LLM can then respond appropriately rather than crashing the entire agent.
-
-**Max Iterations**: Prevents infinite loops by forcing a final answer after N tool calls, ensuring the agent always returns something useful.
-
-**Provider Errors**: Let SDK exceptions propagate naturally, as they contain useful debugging information.
-
-## Testing
-
-Two test files verify provider functionality:
-- `test_gemini.py` - Verifies Gemini API integration
-- `test_anthropic.py` - Verifies Anthropic API integration
-
-These simple scripts ensure basic connectivity and parameter compatibility with each provider.
-
-## Trade-offs and Decisions
-
-**Why text-based tool calling instead of structured?**
-- Assignment requirement: build from scratch
-- More portable across providers
-- Easier to debug (human-readable)
-
-**Why mock tools instead of real APIs?**
-- Reviewers don't need additional API keys
-- Deterministic demo results
-- Focus on tool-calling mechanism, not API integration
-
-**Why multiple providers?**
-- Demonstrates abstraction and flexibility
-- Real-world libraries support multiple providers
-- Shows understanding of provider differences
-
-**Why maintain message history in demo?**
-- Shows agent can maintain context
-- Enables follow-up questions
-- More realistic conversation flow
-
-## File Structure
+## File Structure and Usage
 
 ```
-tool-calling-from-scratch/
-├── agent.py           # Core Agent, Tool, Message classes
-├── config.py          # Model configurations and system prompts
-├── mock_tools.py      # Example tool implementations
-├── chat.py            # Demo script with scenarios
-├── test_gemini.py     # Gemini provider test
-├── test_anthropic.py  # Anthropic provider test
-├── requirements.txt   # Dependencies
-└── .env.example       # API key template
+agent.py           - Core Agent, Tool, Message classes
+config.py          - Model/Provider enums and system prompt templates  
+mock_tools.py      - Example tool function implementations
+chat.py            - Demo with Travel Assistant scenarios
+test_gemini.py     - Gemini provider connectivity test
+test_anthropic.py  - Anthropic provider connectivity test
+requirements.txt   - Dependencies (openai, anthropic, google-generativeai, python-dotenv)
+.env.example       - API key template
 ```
 
-## Conclusion
-
-This implementation demonstrates a fully functional tool-calling agent built from first principles. The system uses prompt engineering to guide LLM behavior, handles errors gracefully, supports multiple providers, and provides a clean API for users to create custom agents with arbitrary tools.
-
+**Usage**: Create an `.env` file with API keys, install dependencies with `pip install -r requirements.txt`, then run `python chat.py` to see the demo. Users can create their own agents by defining tool functions, wrapping them in `Tool` objects with metadata, and passing them to `Agent(name, description, tools=tools)`.

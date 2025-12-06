@@ -49,22 +49,22 @@ class Tool:
 class Agent:
     def __init__(
         self,
+        name: str,
+        description: str,
+        custom_system_prompt: str = DEFAULT_CUSTOM_SYSTEM_PROMPT,
         tools: List[Tool] = None,
         model: Model = Model.GPT_5_MINI,
         max_iterations: int = 10,
         max_tokens: int = 4096,
-        temperature: float = 0.4,
-        agent_name: str = "AI Assistant",
-        agent_description: str = "A helpful AI assistant.",
-        custom_system_prompt: str = DEFAULT_CUSTOM_SYSTEM_PROMPT
+        temperature: float = 0.4
     ):
         self.tools = tools or []
         self.model = model
         self.max_iterations = max_iterations
         self.max_tokens = max_tokens
         self.temperature = temperature
-        self.agent_name = agent_name
-        self.agent_description = agent_description
+        self.agent_name = name
+        self.agent_description = description
         self.custom_system_prompt = custom_system_prompt
         
         # Validate API key exists for chosen provider
